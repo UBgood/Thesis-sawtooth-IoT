@@ -42,8 +42,8 @@ const decode = buf => JSON.parse(buf.toString())
 // Add a new asset to state
 const createAsset = (asset, owner,  state) => {
   const address = getAssetAddress(asset)
-  //console.log('The asset parameters:')
-  //console.log(getAssetParameters(asset))
+  console.log('The asset parameters:')
+  console.log(getAssetParameters(asset))
   
   //console.log(typeof parameters)
   
