@@ -49,6 +49,10 @@ const decode = buf => JSON.parse(buf.toString())
 const createAsset = (asset, owner,  state) => 
 {
   const address = getAssetAddress(asset)
+
+  console.log('The asset parameters:')
+  console.log(getAssetParameters(asset))
+
   
 
   return state.get([address])
