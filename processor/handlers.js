@@ -9,12 +9,12 @@ var eccrypto = require("eccrypto");
 
 //const prompt = require('prompt-sync')();
 
-const readline = require('readline').createInterface({
-  input: process.stdin,
-  output: process.stdout
-});
+// const readline = require('readline').createInterface({
+//   input: process.stdin,
+//   output: process.stdout
+// });
 
-// Encoding helpers and constants
+// Encoding helpers and constants (Encoding function)
 const getAddress = (key, length = 64) => {
   return createHash('sha512').update(key).digest('hex').slice(0, length)
 }
@@ -24,39 +24,48 @@ const getAddress = (key, length = 64) => {
 const FAMILY = 'transfer-chain'
 const PREFIX = getAddress(FAMILY, 6)
 
+//address pointing to where the asset and its respective owner is stored
 const getAssetAddress = name => PREFIX + '00' + getAddress(name, 62)
+
+//same as above but here the asset is being transferred
 const getTransferAddress = asset => PREFIX + '01' + getAddress(asset, 62)
-const getAssetParameters = asset => String(PREFIX + '02' + getAddress(asset, 62)) //trying to generate unique parameters  for each device
+
+//parameter generation function f
+const getAssetParameters = (asset, owner) => {
+  var nonce = require('crypto').randomBytes(16).toString('base64');
+  const parameters = String(getAddress(asset, 62)+String(owner)+nonce); 
+  return parameters;
+} 
+
 
 const encode = obj => Buffer.from(JSON.stringify(obj, Object.keys(obj).sort()))
 const decode = buf => JSON.parse(buf.toString())
 
-/* const {
-  //makeKeyPair2,
-  eciesTransfer
-} = require('./encTransfer')//new
- */
+
 
 
 
 // Add a new asset to state
-const createAsset = (asset, owner,  state) => {
+const createAsset = (asset, owner,  state) => 
+{
   const address = getAssetAddress(asset)
+
   console.log('The asset parameters:')
   console.log(getAssetParameters(asset))
-  
-  //console.log(typeof parameters)
+
   
 
   return state.get([address])
     .then(entries => {
       const entry = entries[address]
       if (entry && entry.length > 0) {
-        throw new InvalidTransaction('Asset name in use')
+        throw new InvalidTransaction('Device name in use')
       }
-
+      console.log('Device Created. \nDefault Device Parameters: ')
+      // new parameters generated for the device
+      console.log(getAssetParameters(asset)) 
       return state.set({
-        [address]: encode({name: asset, owner})
+        [address]: encode({name: asset, owner}) // this address maps to device and owner
       })
     })
 }
@@ -64,9 +73,9 @@ const createAsset = (asset, owner,  state) => {
 
 // Add a new transfer to state
 const transferAsset = (asset, owner, signer, state) => {
+  
+  const assetAddress = getAssetAddress(asset) 
   const address = getTransferAddress(asset)
-  const assetAddress = getAssetAddress(asset)
-  //const parameters = getAssetParameters(asset)
 
   return state.get([assetAddress])
     .then(entries => {
@@ -82,7 +91,9 @@ const transferAsset = (asset, owner, signer, state) => {
 
 
       return state.set({
-        [address]: encode({asset, owner})
+
+        //this address points to a state change where the asset is being transferred by its owner
+        [address]: encode({asset, owner}) 
       })
     })
 }
@@ -101,53 +112,52 @@ const acceptTransfer = (asset, signer, state) => {
 
       if (signer !== decode(entry).owner) {
         throw new InvalidTransaction(
-          'Transfers can only be accepted by the new owner'
+          'Transfers not initiated by previous owner'
         )
       }
 
-      //const transferKeys = makeKeyPair2()
-      // const output = eciesTransfer(parameters/* , transferKeys.receiverPublicKey, transferKeys.receiverPrivateKey */)
-      // console.log(output);
+      console.log('transferring parameters')
 
-      
+      var privateKeyBuyer = eccrypto.generatePrivate();
+      var publicKeyBuyer = eccrypto.getPublic(privateKeyBuyer);
 
-      var privateKeyB = eccrypto.generatePrivate();
-      var publicKeyB = eccrypto.getPublic(privateKeyB);
-
-    // Encrypting the message for B.
-      eccrypto.encrypt(publicKeyB, parameters).then(function(encrypted) {
-        // B decrypting the message.
-        eccrypto.decrypt(privateKeyB, encrypted).then(function(plaintext) {
-          console.log("Parameters:", plaintext.toString());
-        });
-      });
-
-
-      readline.question('Do you want to bootstrap the device?(y/n)', bs => {
-        if(bs == 'n'){
-          // throw new InvalidTransaction(
-          //   'Bootstrapping cancelled')
-            console.log('Bootstrapping cancelled')
-        }
-        else{
-          console.log('Device Bootstrapped')
-        }
-        readline.close();
-      });
-
-      // const bs = prompt('Do you want to bootstrap the device?(y/n)');
-      //   if(bs == 'n'){
-      //     throw new InvalidTransaction(
-      //       'Bootstrapping cancelled')
-      //   }
-      //   console.log('Device Bootstrapped')
+      // Encrypting the message for Buyer.
+      eccrypto.encrypt(publicKeyBuyer, parameters).then(function(encrypted) {
+      // Buyer decrypting the message.
+      eccrypto.decrypt(privateKeyBuyer, encrypted).then(function(plaintext) {
+      console.log("Parameters:", plaintext.toString());
+    });
+  });
 
       return state.set({
-        [address]: Buffer(0),
-        [getAssetAddress(asset)]: encode({name: asset, owner: signer})
+        // the address pointing to the asset that was being transferred now points to nothing since the transfer has been accepted
+        [address]: Buffer(0),  
+        // new address of asset with new owner
+        [getAssetAddress(asset)]: encode({name: asset, owner: signer}) 
       })
     })
 }
+
+//bootstrapping function
+
+const bootstrap = (asset, signer, state) => { 
+
+  const assetAddress = getAssetAddress(asset)
+  console.log("Broadcasting Bootstrapping Network")
+  return state.get([assetAddress])
+    .then(entries => {
+      const entry = entries[assetAddress]
+
+      //matches the signature of the record of acceptance with the device's owner
+
+      if (signer !== decode(entry).owner) {
+        throw new InvalidTransaction('Only Device\'s owner may bootstrap it')
+      }
+      console.log("Secure Bootstrapping Network Established");
+    })
+}
+
+
 
 // Reject a transfer, clearing it
 const rejectTransfer = (asset, signer, state) => {
@@ -164,34 +174,14 @@ const rejectTransfer = (asset, signer, state) => {
         throw new InvalidTransaction(
           'Transfers can only be rejected by the potential new owner')
       }
-
+      // the address pointing to the asset that was being transferred now points to nothing since the transfer has been rejected
       return state.set({
         [address]: Buffer(0)
       })
     })
 }
 
-// const bootstrap = (/* asset, */ signer, state) => {
-//   //const parameters = getAssetParameters(asset)
-  
-//   return state.get([address])
-//     .then(entries => {
-//       const entry = entries[address]
 
-//       if (signer !== decode(entry).owner) {
-//         throw new InvalidTransaction(
-//           'Only the owner can initiate bootstrapping')
-//       }
-//       // if (parameters !== decode(entry).parameters) {
-//       //   throw new InvalidTransaction(
-//       //     'parameters do not match the ones in records')
-//       // }
-
-//       return state.set({
-//         [address]: Buffer(0)
-//       })
-//     })
-// }
 
 
 // Handler for JSON encoded payloads
@@ -216,6 +206,7 @@ class JSONHandler extends TransactionHandler {
     if (action === 'transfer') return transferAsset(asset, owner, signer, state)
     if (action === 'accept') return acceptTransfer(asset, signer, state)
     if (action === 'reject') return rejectTransfer(asset, signer, state)
+    if (action === 'bootstrap') return bootstrap(asset, signer, state)
 
     return Promise.resolve().then(() => {
       throw new InvalidTransaction(
@@ -228,3 +219,5 @@ class JSONHandler extends TransactionHandler {
 module.exports = {
   JSONHandler
 }
+
+
