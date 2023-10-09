@@ -1,4 +1,4 @@
-# Zero-Touch Bootstrapping Using Hyperledger Sawtooth
+# Secure Zero-Touch Bootstrapping of IoT Devices using Hyperledger Sawtooth
 
 An example of a simple blockchain app written entirely in JavaScript with
 [Hyperledger Sawtooth](https://github.com/hyperledger/sawtooth-core). This app has the following functionalitites:
